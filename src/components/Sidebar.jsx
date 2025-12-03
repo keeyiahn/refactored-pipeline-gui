@@ -10,16 +10,14 @@ const Sidebar = ({ templatesHook, modalHook }) => {
         event.dataTransfer.effectAllowed = 'move';
     };
 
+    const onClickNew = () => {
+        openModal("new template", "new template", 'test')
+    };
+
   return (
     <aside style={styles.sidebar}>
       <div style={styles.header}>Vertices</div>
-      <button style={styles.addBtn} onClick={() => {
-        addTemplate({
-            id: `meow`,
-            type: "default",
-            data: { label: `meow` }
-        })
-      }}>
+      <button style={styles.addBtn} onClick={onClickNew}>
         hi
       </button>
       {/* <div
@@ -30,13 +28,13 @@ const Sidebar = ({ templatesHook, modalHook }) => {
       >
         Generator Source
       </div> */}
-        {Object.entries(templates).map(([key, info]) => (
+        {Object.entries(templates).map(([key, value]) => (
         <div
           key={key}
           style={styles.item}
           draggable
           onDragStart={(e) => onDragStart(e, key)}
-          onClick={() => openModal(`hi`)}
+          onClick={() => openModal("template", key, value.data.config)}
         >
           {key}
         </div>
