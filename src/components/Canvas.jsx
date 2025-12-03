@@ -1,4 +1,5 @@
-import ReactFlow, { 
+import { 
+    ReactFlow,
     useReactFlow,
     Background,
     MiniMap,
@@ -62,7 +63,12 @@ export default function Canvas({ pipelineHook, modalHook }) {
 
     const onEdgeClick = useCallback((event, edge) => { 
         event.preventDefault();
-        openModal("edge", edge.id, edge.data?.conditions || []);
+
+        const conditionsYaml = {
+            ...(edge.data?.conditions ? edge.data.conditions : { conditions: {} })
+          };
+
+        openModal("edge", `from: ${edge.source} to: ${edge.target}`, conditionsYaml);
     }, []);
 
     const onEdgeRightClick = useCallback((event, edge) => {

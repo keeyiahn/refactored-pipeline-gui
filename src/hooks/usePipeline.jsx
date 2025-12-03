@@ -46,7 +46,7 @@ export default function usePipeline() {
   const editEdge = useCallback((edgeId, newData) => {
     setEdges((eds) =>
       eds.map((edge) =>
-        edge.id === edgeId ? { ...edge, data: { ...edge.data, config: newData } } : edge
+        edge.id === edgeId ? { ...edge, data: { ...edge.data, conditions: newData } } : edge
       )
     );
   });

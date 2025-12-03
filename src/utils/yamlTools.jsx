@@ -32,7 +32,8 @@ export const exportPipeline = (nodes, edges) => {
 
       // If edge has stored conditions, include them in YAML
       if (e.data?.conditions) {
-        base.conditions = e.data.conditions;
+        const c = e.data.conditions;
+        base.conditions = c.conditions;
       }
 
       return base;

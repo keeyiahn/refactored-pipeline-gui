@@ -7,7 +7,7 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook }) 
 
     const { newId, setNewId, type ,id, setId, isOpen, modalContent, openModal, closeModal } = modalHook;
     const { editTemplate, addTemplate } = templatesHook;
-    const { editNode } = pipelineHook;
+    const { editNode, editEdge } = pipelineHook;
 
     const [ text, setText ] = useState(parseYaml(modalContent).data);
     useEffect(() => {
@@ -28,7 +28,7 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook }) 
             editNode(id, newId, newConfig);
         };
         if (type === 'edge') {
-            // edge editing not implemented yet
+            editEdge(id, newConfig);
         };
         if (type === 'new template') {
             addTemplate({
