@@ -50,9 +50,9 @@ export const exportPipeline = (nodes, edges) => {
     return yamlText;
   };
 
-  export async function importYaml(file, setNodes, setEdges) {
-    const text = await file.text();
-    const parsed = yaml.load(text);
+  // Helper function to load pipeline from YAML string
+  function loadPipelineFromYaml(yamlText, setNodes, setEdges) {
+    const parsed = yaml.load(yamlText);
   
     if (!parsed?.spec?.vertices) {
       throw new Error("Invalid pipeline YAML: missing spec.vertices");
@@ -107,5 +107,14 @@ export const exportPipeline = (nodes, edges) => {
   
     setNodes(importedNodes);
     setEdges(importedEdges);
+  }
+
+  export async function importYaml(file, setNodes, setEdges) {
+    const text = await file.text();
+    loadPipelineFromYaml(text, setNodes, setEdges);
+  }
+
+  export function importYamlFromString(yamlString, setNodes, setEdges) {
+    loadPipelineFromYaml(yamlString, setNodes, setEdges);
   }
   

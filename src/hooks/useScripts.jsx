@@ -123,9 +123,14 @@ if __name__ == "__main__":
         });
       };
 
+    const setAllScripts = (newScripts) => {
+        setScripts(newScripts || {});
+    };
+
     return {
         scripts,
         addScript,
-        editScript
+        editScript,
+        setAllScripts
     };
 }
