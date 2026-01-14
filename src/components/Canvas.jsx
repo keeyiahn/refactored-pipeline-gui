@@ -11,19 +11,21 @@ import {
     useRef,
     useState
 } from "react";
-import { Download, Upload, FileText } from 'lucide-react';
+import { Download, Upload, FileText, GitCommit } from 'lucide-react';
 
 import { nameGen } from '../utils/nameGen';
 import { exportPipeline, importYaml } from '../utils/yamlTools';
 import yaml from 'js-yaml';
 
-export default function Canvas({ pipelineHook, modalHook }) {
+export default function Canvas({ pipelineHook, modalHook, repositoryHook }) {
 
     const { nodes, edges, handleNodesChange, handleEdgesChange, handleConnect, addNode, setNodes, setEdges } = pipelineHook;
     const { isOpen, modalContent, openModal, closeModal } = modalHook;
+    const { isInitialized, updatePipeline } = repositoryHook || {};
     const { screenToFlowPosition } = useReactFlow();
     const fileInputRef = useRef(null);
     const [isImporting, setIsImporting] = useState(false);
+    const [isCommitting, setIsCommitting] = useState(false);
 
     const onDragOver = useCallback((event) => {
         event.preventDefault();
@@ -109,6 +111,26 @@ export default function Canvas({ pipelineHook, modalHook }) {
         fileInputRef.current?.click();
     };
 
+    const onClickCommit = async () => {
+        if (!isInitialized) {
+            alert('Please initialize a repository first');
+            return;
+        }
+        
+        setIsCommitting(true);
+        try {
+            const pipelineYaml = exportPipeline(nodes, edges);
+            await updatePipeline(pipelineYaml);
+            // Show success feedback
+            setTimeout(() => {
+                setIsCommitting(false);
+            }, 500);
+        } catch (err) {
+            alert("Commit failed: " + err.message);
+            setIsCommitting(false);
+        }
+    };
+
     return (
         <div style={{ width: '100%', height: '100%', position: 'relative' }}>
             {/* Toolbar */}
@@ -129,6 +151,33 @@ export default function Canvas({ pipelineHook, modalHook }) {
                     >
                         <Download size={16} style={{ marginRight: '8px' }} />
                         Export Pipeline
+                    </button>
+                    
+                    <button
+                        onClick={onClickCommit}
+                        disabled={!isInitialized || isCommitting}
+                        style={{
+                            ...styles.toolbarButton,
+                            ...styles.toolbarButtonCommit,
+                            opacity: (!isInitialized || isCommitting) ? 0.6 : 1,
+                            cursor: (!isInitialized || isCommitting) ? 'not-allowed' : 'pointer'
+                        }}
+                        onMouseEnter={(e) => {
+                            if (isInitialized && !isCommitting) {
+                                e.currentTarget.style.background = '#059669';
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                            }
+                        }}
+                        onMouseLeave={(e) => {
+                            if (isInitialized && !isCommitting) {
+                                e.currentTarget.style.background = '#10b981';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                            }
+                        }}
+                        title={isInitialized ? "Commit pipeline to repository" : "Initialize a repository first"}
+                    >
+                        <GitCommit size={16} style={{ marginRight: '8px' }} />
+                        {isCommitting ? 'Committing...' : 'Commit Pipeline'}
                     </button>
                     
                     <button
@@ -229,6 +278,10 @@ const styles = {
         background: '#f1f5f9',
         color: '#475569',
         border: '1px solid #e2e8f0'
+    },
+    toolbarButtonCommit: {
+        background: '#10b981',
+        color: 'white'
     },
     hiddenFileInput: {
         display: 'none'

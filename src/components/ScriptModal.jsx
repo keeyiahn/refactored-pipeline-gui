@@ -42,7 +42,7 @@ if __name__ == "__main__":
     grpc_server.start()
 `;
 
-export default function ScriptModal({ scriptModalHook, scriptsHook }) {
+export default function ScriptModal({ scriptModalHook, scriptsHook, repositoryHook }) {
 
     const { newId, setNewId, type ,id, setId, isOpen, modalContent, openModal, closeModal } = scriptModalHook;
     const { scripts, editScript, addScript } = scriptsHook;
@@ -76,13 +76,37 @@ export default function ScriptModal({ scriptModalHook, scriptsHook }) {
         }
     }, [scriptType, type]);
 
-    const saveConfig = () => {
+    const saveConfig = async () => {
         if (type === 'new script') {
-            // Create new script
+            // Create new script - useScripts expects (id, type, data)
             addScript(newId, scriptType, text);
+            // Also add to repository if initialized
+            if (repositoryHook?.isInitialized) {
+                const scriptData = {
+                    type: scriptType,
+                    data: text
+                };
+                await repositoryHook.addScript(newId, scriptData);
+            }
         } else {
-            // Edit existing script
+            // Edit existing script - editScript expects (id, newId, newConfig)
+            const currentType = scripts[id]?.type || 'map';
             editScript(id, newId, text);
+            // Update repository if initialized
+            if (repositoryHook?.isInitialized) {
+                const scriptData = {
+                    type: currentType,
+                    data: text
+                };
+                if (id !== newId) {
+                    // Name changed, remove old and add new
+                    await repositoryHook.removeScript(id);
+                    await repositoryHook.addScript(newId, scriptData);
+                } else {
+                    // Just update the script data
+                    await repositoryHook.addScript(newId, scriptData);
+                }
+            }
         }
 
         closeModal();

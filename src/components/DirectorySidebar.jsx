@@ -1,18 +1,75 @@
 import React, { useState } from 'react';
-import { Folder, File, ChevronLeft, ChevronRight, Plus, FolderOpen, FileCode } from 'lucide-react';
+import { Folder, File, ChevronLeft, ChevronRight, Plus, FolderOpen, FileCode, Trash2 } from 'lucide-react';
 import { generateDirectoryStructure } from '../utils/repositoryTools';
+import { importYamlFromString } from '../utils/yamlTools';
 
-const DirectorySidebar = ({ repositoryHook, isVisible = true, onToggle, modalHook }) => {
-    const { repository, isInitialized, initializeRepository, clearRepository } = repositoryHook;
+const DirectorySidebar = ({ repositoryHook, isVisible = true, onToggle, modalHook, pipelineHook, scriptsHook }) => {
+    const { repository, isInitialized, savedRepositories, initializeRepository, openRepository, removeRepository, clearRepository } = repositoryHook;
     const { openModal } = modalHook || {};
+    const { setNodes, setEdges } = pipelineHook || {};
+    const { setAllScripts } = scriptsHook || {};
     const [showInitModal, setShowInitModal] = useState(false);
+    const [showOpenModal, setShowOpenModal] = useState(false);
     const [repoName, setRepoName] = useState('');
 
-    const handleInitialize = () => {
+    const handleInitialize = async () => {
         if (repoName.trim()) {
-            initializeRepository(repoName.trim());
+            await initializeRepository(repoName.trim());
             setRepoName('');
             setShowInitModal(false);
+        }
+    };
+
+    const handleOpenRepository = async (repoName) => {
+        try {
+            const loadedRepo = await openRepository(repoName);
+            
+            // Load pipeline.yaml into canvas if it exists
+            if (loadedRepo.pipeline && setNodes && setEdges) {
+                try {
+                    importYamlFromString(loadedRepo.pipeline, setNodes, setEdges);
+                } catch (error) {
+                    console.error('Failed to load pipeline:', error);
+                    alert('Failed to load pipeline: ' + error.message);
+                }
+            }
+            
+            // Load scripts from repository into scriptsHook
+            if (loadedRepo.scripts && setAllScripts) {
+                // Convert repository script format to scriptsHook format
+                const scriptsToLoad = {};
+                Object.entries(loadedRepo.scripts).forEach(([scriptName, scriptData]) => {
+                    // Handle both old format (string) and new format (object with type and data)
+                    if (typeof scriptData === 'string') {
+                        scriptsToLoad[scriptName] = {
+                            type: 'map', // Default to map if type not specified
+                            data: scriptData
+                        };
+                    } else {
+                        scriptsToLoad[scriptName] = {
+                            type: scriptData.type || 'map',
+                            data: scriptData.data || scriptData
+                        };
+                    }
+                });
+                setAllScripts(scriptsToLoad);
+            }
+            
+            setShowOpenModal(false);
+        } catch (error) {
+            console.error('Failed to open repository:', error);
+            alert('Failed to open repository: ' + error.message);
+        }
+    };
+
+    const handleDeleteRepository = async (e, repoName) => {
+        e.stopPropagation();
+        if (confirm(`Are you sure you want to delete repository "${repoName}"?`)) {
+            try {
+                await removeRepository(repoName);
+            } catch (error) {
+                alert('Failed to delete repository: ' + error.message);
+            }
         }
     };
 
@@ -41,14 +98,10 @@ const DirectorySidebar = ({ repositoryHook, isVisible = true, onToggle, modalHoo
             return structure.dockerfiles?.[filePathClean] || '';
         }
         
-        // Handle manifests - check for deployments first (more specific)
-        if (filePath.includes('manifests/deployments/')) {
-            const fileName = filePath.split('manifests/deployments/')[1];
-            return structure.manifests?.deployments?.[fileName] || '';
-        }
-        if (filePath.includes('manifests/services/')) {
-            const fileName = filePath.split('manifests/services/')[1];
-            return structure.manifests?.services?.[fileName] || '';
+        // Handle manifests
+        if (filePath.startsWith('manifests/')) {
+            const fileName = filePath.replace('manifests/', '');
+            return structure.manifests?.[fileName] || '';
         }
         
         return '';
@@ -109,33 +162,14 @@ const DirectorySidebar = ({ repositoryHook, isVisible = true, onToggle, modalHoo
             });
         }
 
-        // Manifests directory
-        const manifestDeployments = structure?.manifests?.deployments ? Object.keys(structure.manifests.deployments) : [];
-        const manifestServices = structure?.manifests?.services ? Object.keys(structure.manifests.services) : [];
-        
-        if (manifestDeployments.length > 0 || manifestServices.length > 0) {
-            const manifestChildren = [];
-            if (manifestDeployments.length > 0) {
-                manifestChildren.push({ 
-                    name: 'deployments', 
-                    type: 'folder', 
-                    icon: FolderOpen, 
-                    children: manifestDeployments.map(f => ({ name: f, type: 'file', icon: File }))
-                });
-            }
-            if (manifestServices.length > 0) {
-                manifestChildren.push({ 
-                    name: 'services', 
-                    type: 'folder', 
-                    icon: FolderOpen, 
-                    children: manifestServices.map(f => ({ name: f, type: 'file', icon: File }))
-                });
-            }
+        // Manifests directory (only show if there are any custom manifests)
+        const manifestFiles = structure?.manifests ? Object.keys(structure.manifests) : [];
+        if (manifestFiles.length > 0) {
             files.push({ 
                 name: 'manifests', 
                 type: 'folder', 
                 icon: FolderOpen,
-                children: manifestChildren
+                children: manifestFiles.map(f => ({ name: f, type: 'file', icon: File }))
             });
         }
 
@@ -278,21 +312,38 @@ const DirectorySidebar = ({ repositoryHook, isVisible = true, onToggle, modalHoo
                     <div style={styles.emptyState}>
                         <Folder size={48} style={{ color: '#cbd5e1', marginBottom: '12px' }} />
                         <p style={styles.emptyText}>No repository initialized</p>
-                        <button
-                            onClick={() => setShowInitModal(true)}
-                            style={styles.initRepoButton}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.background = '#2563eb';
-                                e.currentTarget.style.transform = 'translateY(-1px)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.background = '#3b82f6';
-                                e.currentTarget.style.transform = 'translateY(0)';
-                            }}
-                        >
-                            <Plus size={16} style={{ marginRight: '8px' }} />
-                            Initialize Repository
-                        </button>
+                        <div style={styles.buttonGroup}>
+                            <button
+                                onClick={() => setShowOpenModal(true)}
+                                style={styles.openRepoButton}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#e2e8f0';
+                                    e.currentTarget.style.borderColor = '#cbd5e1';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#f1f5f9';
+                                    e.currentTarget.style.borderColor = '#e2e8f0';
+                                }}
+                            >
+                                <FolderOpen size={16} style={{ marginRight: '8px' }} />
+                                Open Repository
+                            </button>
+                            <button
+                                onClick={() => setShowInitModal(true)}
+                                style={styles.initRepoButton}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#2563eb';
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#3b82f6';
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                }}
+                            >
+                                <Plus size={16} style={{ marginRight: '8px' }} />
+                                New Repository
+                            </button>
+                        </div>
                     </div>
                 ) : (
                     <div style={styles.content}>
@@ -339,6 +390,66 @@ const DirectorySidebar = ({ repositoryHook, isVisible = true, onToggle, modalHoo
                                 }}
                             >
                                 Initialize
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showOpenModal && (
+                <div style={styles.modalOverlay} onClick={() => setShowOpenModal(false)}>
+                    <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+                        <h3 style={styles.modalTitle}>Open Repository</h3>
+                        <p style={styles.modalDescription}>Select a repository to open</p>
+                        <div style={styles.repoList}>
+                            {savedRepositories.length === 0 ? (
+                                <p style={styles.noReposText}>No saved repositories found</p>
+                            ) : (
+                                savedRepositories.map((repo) => (
+                                    <div
+                                        key={repo.name}
+                                        style={styles.repoListItem}
+                                        onClick={() => handleOpenRepository(repo.name)}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.background = '#f8fafc';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.background = 'transparent';
+                                        }}
+                                    >
+                                        <Folder size={18} style={{ color: '#3b82f6', marginRight: '10px' }} />
+                                        <div style={{ flex: 1 }}>
+                                            <div style={styles.repoListItemName}>{repo.name}</div>
+                                            <div style={styles.repoListItemMeta}>
+                                                Created: {new Date(repo.createdAt).toLocaleDateString()}
+                                                {repo.lastModified && ` • Modified: ${new Date(repo.lastModified).toLocaleDateString()}`}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={(e) => handleDeleteRepository(e, repo.name)}
+                                            style={styles.deleteRepoButton}
+                                            title="Delete repository"
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = '#fee2e2';
+                                                e.currentTarget.style.color = '#dc2626';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = 'transparent';
+                                                e.currentTarget.style.color = '#64748b';
+                                            }}
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <div style={styles.modalButtons}>
+                            <button
+                                onClick={() => setShowOpenModal(false)}
+                                style={styles.modalButtonSecondary}
+                            >
+                                Cancel
                             </button>
                         </div>
                     </div>
@@ -459,6 +570,28 @@ const styles = {
         fontSize: '13px',
         color: '#64748b',
         marginBottom: '20px'
+    },
+    buttonGroup: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        width: '100%',
+        maxWidth: '200px'
+    },
+    openRepoButton: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '10px 16px',
+        background: '#f1f5f9',
+        color: '#475569',
+        border: '1px solid #e2e8f0',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        fontSize: '13px',
+        fontWeight: '600',
+        transition: 'all 0.2s ease',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)'
     },
     initRepoButton: {
         display: 'flex',
@@ -610,6 +743,51 @@ const styles = {
         fontSize: '14px',
         fontWeight: '600',
         transition: 'all 0.2s ease'
+    },
+    repoList: {
+        maxHeight: '400px',
+        overflowY: 'auto',
+        marginBottom: '20px',
+        border: '1px solid #e2e8f0',
+        borderRadius: '8px',
+        padding: '8px'
+    },
+    repoListItem: {
+        display: 'flex',
+        alignItems: 'center',
+        padding: '12px',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        marginBottom: '4px'
+    },
+    repoListItemName: {
+        fontSize: '14px',
+        fontWeight: '600',
+        color: '#0f172a',
+        marginBottom: '4px'
+    },
+    repoListItemMeta: {
+        fontSize: '12px',
+        color: '#64748b'
+    },
+    deleteRepoButton: {
+        padding: '6px',
+        background: 'transparent',
+        border: 'none',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        color: '#64748b',
+        transition: 'all 0.2s ease',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    noReposText: {
+        textAlign: 'center',
+        color: '#64748b',
+        fontSize: '14px',
+        padding: '20px'
     }
 };
 

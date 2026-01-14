@@ -14,6 +14,10 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook, sc
     const [ text, setText ] = useState(parseYaml(modalContent).data);
     const [vertexType, setVertexType] = useState('source');
     const [selectedUdfScript, setSelectedUdfScript] = useState('');
+    
+    // For file viewing mode
+    const isViewFile = type === 'view file';
+    const fileInfo = isViewFile && modalContent ? modalContent : null;
 
     // Generate template based on vertex type
     const generateTemplate = (vertType, scriptName = '') => {
@@ -44,7 +48,10 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook, sc
 
     // Update text based on modal type and content
     useEffect(() => {
-        if (type === 'new template') {
+        if (type === 'view file') {
+            // For file viewing, use the content directly
+            setText(fileInfo?.content || '');
+        } else if (type === 'new template') {
             // Generate template when opening new template modal or when type/script changes
             const template = generateTemplate(vertexType, selectedUdfScript);
             const yamlText = yaml.dump(template);
@@ -53,9 +60,15 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook, sc
             // For existing templates/nodes, use the provided content
             setText(parseYaml(modalContent).data);
         }
-    }, [modalContent, type, vertexType, selectedUdfScript]);
+    }, [modalContent, type, vertexType, selectedUdfScript, fileInfo]);
 
     const saveConfig = () => {
+        // File viewing mode is read-only, just close
+        if (type === 'view file') {
+            closeModal();
+            return;
+        }
+        
         const tryNewConfig = loadYaml(text);
         const newConfig = tryNewConfig.error ? modalContent : tryNewConfig.data;
         // editTemplate(id, newConfig);
@@ -101,6 +114,16 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook, sc
 
         closeModal();
     };
+    
+    const getEditorLanguage = () => {
+        if (isViewFile && fileInfo?.language) {
+            return fileInfo.language;
+        }
+        if (type === 'exported pipeline' || type === 'template' || type === 'node' || type === 'edge' || type === 'new template') {
+            return 'yaml';
+        }
+        return 'yaml';
+    };
 
     if (!isOpen) return null;    
     
@@ -112,6 +135,17 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook, sc
     return (
         <div style={styles.overlay}>
           <div style={styles.modal}>
+            {isViewFile && fileInfo && (
+                <div style={styles.exportHeader}>
+                    <div style={styles.exportIconContainer}>
+                        <FileText size={24} color="#3b82f6" />
+                    </div>
+                    <div>
+                        <h3 style={styles.exportTitle}>{fileInfo.fileName}</h3>
+                        <p style={styles.exportDescription}>Repository file viewer</p>
+                    </div>
+                </div>
+            )}
             {type === 'exported pipeline' && (
                 <div style={styles.exportHeader}>
                     <div style={styles.exportIconContainer}>
@@ -123,20 +157,22 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook, sc
                     </div>
                 </div>
             )}
-            <input
-                value={newId}
-                onChange={(e) => setNewId(e.target.value)}
-                placeholder={type === 'exported pipeline' ? "pipeline-name" : "e.g., generatorSource"}
-                style={styles.input}
-                onFocus={(e) => {
-                    e.target.style.borderColor = '#3b82f6';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
-                }}
-                onBlur={(e) => {
-                    e.target.style.borderColor = '#e2e8f0';
-                    e.target.style.boxShadow = 'none';
-                }}
-            />
+            {!isViewFile && (
+                <input
+                    value={newId}
+                    onChange={(e) => setNewId(e.target.value)}
+                    placeholder={type === 'exported pipeline' ? "pipeline-name" : "e.g., generatorSource"}
+                    style={styles.input}
+                    onFocus={(e) => {
+                        e.target.style.borderColor = '#3b82f6';
+                        e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+                    }}
+                    onBlur={(e) => {
+                        e.target.style.borderColor = '#e2e8f0';
+                        e.target.style.boxShadow = 'none';
+                    }}
+                />
+            )}
             
             {type === 'exported pipeline' && (
                 <div style={styles.previewContainer}>
@@ -223,16 +259,17 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook, sc
                     boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.05)'
                 }}>
                     <Editor
-                      height="350px"
-                      language="yaml"
+                      height={isViewFile ? "600px" : "350px"}
+                      language={getEditorLanguage()}
                       theme="vs-dark"
                       options={{
                         minimap: { enabled: false },
                         fontSize: 13,
                         automaticLayout: true,
+                        readOnly: isViewFile,
                       }}
                       value={text}
-                      onChange={(change) => setText(change)}
+                      onChange={(change) => !isViewFile && setText(change)}
                     />
                 </div>
             )}
@@ -247,31 +284,33 @@ export default function ConfigModal({ modalHook, pipelineHook, templatesHook, sc
                     e.currentTarget.style.background = '#f1f5f9';
                 }}
               >
-                Cancel
+                {isViewFile ? 'Close' : 'Cancel'}
               </button>
-              <button 
-                style={styles.button} 
-                onClick={saveConfig}
-                onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#2563eb';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(59, 130, 246, 0.3)';
-                }}
-                onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#3b82f6';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
-                }}
-              >
-                {type === 'exported pipeline' ? (
-                    <>
-                        <Download size={16} style={{ marginRight: '8px' }} />
-                        Download YAML
-                    </>
-                ) : (
-                    'Save'
-                )}
-              </button>
+              {!isViewFile && (
+                <button 
+                  style={styles.button} 
+                  onClick={saveConfig}
+                  onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#2563eb';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = '0 4px 6px rgba(59, 130, 246, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#3b82f6';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
+                  }}
+                >
+                  {type === 'exported pipeline' ? (
+                      <>
+                          <Download size={16} style={{ marginRight: '8px' }} />
+                          Download YAML
+                      </>
+                  ) : (
+                      'Save'
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -421,6 +460,6 @@ const styles = {
     },
     previewContent: {
         border: 'none'
-    }
+      }
   };
 
